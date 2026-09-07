@@ -1,0 +1,64 @@
+services:
+  api:
+    build: .
+    container_name: nexus-api
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    environment:
+      PYTHONPATH: /app
+      OLLAMA_HOST: http://host.docker.internal:11434
+    restart: unless-stopped
+
+  dashboard:
+    build: .
+    container_name: nexus-dashboard
+    command: python -m streamlit run dashboard/app.py --server.address=0.0.0.0 --server.port=8501
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    environment:
+      PYTHONPATH: /app
+      OLLAMA_HOST: http://host.docker.internal:11434
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  metrics-generator:
+    build: .
+    container_name: nexus-metrics
+    command: python -m src.realtime_monitoring.metrics_generator
+    volumes:
+      - ./data:/app/data
+    environment:
+      PYTHONPATH: /app
+    restart: unless-stopped
+
+  incident-detector:
+    build: .
+    container_name: nexus-detector
+    command: python -m src.realtime_monitoring.incident_detector
+    volumes:
+      - ./data:/app/data
+    environment:
+      PYTHONPATH: /app
+    depends_on:
+      - metrics-generator
+    restart: unless-stopped
+
+  alert-engine:
+    build: .
+    container_name: nexus-alerts
+    command: python -m src.alerts.alert_engine
+    volumes:
+      - ./data:/app/data
+    environment:
+      PYTHONPATH: /app
+    depends_on:
+      - incident-detector
+    restart: unless-stopped
